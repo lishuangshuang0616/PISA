@@ -43,6 +43,13 @@ static struct args {
     uint64_t barcode_exactly_matched;
     uint64_t filtered_by_barcode;
     uint64_t filtered_by_lowqual;
+
+    uint64_t q30_bases_cell_barcode;
+    uint64_t q30_bases_umi;      // 添加 UMI 的 Q30 统计
+    uint64_t q30_bases_reads;
+    uint64_t bases_cell_barcode;
+    uint64_t bases_umi;          // 添加 UMI 的总碱基统计
+    uint64_t bases_reads;
 } args = {
     .r1_fname    = NULL,
     .r2_fname    = NULL,
@@ -72,6 +79,12 @@ static struct args {
     .barcode_exactly_matched = 0,
     .filtered_by_barcode = 0,
     .filtered_by_lowqual = 0,
+    .q30_bases_cell_barcode = 0,
+    .q30_bases_umi = 0,         // 初始化 UMI Q30 统计
+    .q30_bases_reads = 0,
+    .bases_cell_barcode = 0,
+    .bases_umi = 0,             // 初始化 UMI 总碱基统计
+    .bases_reads = 0,
 };
 
 struct bc_reg0 {
@@ -531,8 +544,10 @@ static int write_report()
     fprintf(args.fp_report, "Fragments pass QC,%"PRIu64"\n", args.reads_pass_qc);
     fprintf(args.fp_report, "Fragments with Exactly Matched Barcodes,%"PRIu64"\n", args.barcode_exactly_matched);
     fprintf(args.fp_report, "Fragments with Failed Barcodes,%"PRIu64"\n", args.filtered_by_barcode);
-    // fprintf(args.fp_report, "Fragments Filtered on Low Quality,%"PRIu64"\n", args.filtered_by_lowqual);
-    // fprintf(args.fp_report, "Q30 bases in Reads,%.1f%%\n", (float)args.q30_bases_reads/(args.bases_reads+1)*100);
+    fprintf(args.fp_report, "Fragments Filtered on Low Quality,%"PRIu64"\n", args.filtered_by_lowqual);
+    fprintf(args.fp_report, "Q30 bases in Cell Barcodes,%.2f%%\n", (float)args.q30_bases_cell_barcode/(args.bases_cell_barcode+1)*100);
+    fprintf(args.fp_report, "Q30 bases in UMI,%.2f%%\n", (float)args.q30_bases_umi/(args.bases_umi+1)*100);
+    fprintf(args.fp_report, "Q30 bases in Reads,%.2f%%\n", (float)args.q30_bases_reads/(args.bases_reads+1)*100);
     
     if (args.fp_report != stderr) fclose(args.fp_report);
     return 0;
@@ -555,6 +570,24 @@ static void *run_it(void *_p)
             for (k = 0; k < r->n; ++k) {
                 struct bc_reg0 *r0 = &r->r[k];
                 char *val = bseq_subset_seq(b, r0->rd, r0->st, r0->ed);
+                char *qual = bseq_subset_qual(b, r0->rd, r0->st, r0->ed);
+                
+                // 统计 cell barcode 或 UMI 的 Q30
+                if (qual) {
+                    int l;
+                    for (l = 0; qual[l]; l++) {
+                        // 根据 raw_tag 判断是 cell barcode 还是 UMI
+                        if (strcmp(r->raw_tag, "UR") == 0) {
+                            args.bases_umi++;
+                            if (qual[l]-33 >= 30) args.q30_bases_umi++;
+                        } else {
+                            args.bases_cell_barcode++;
+                            if (qual[l]-33 >= 30) args.q30_bases_cell_barcode++;
+                        }
+                    }
+                    free(qual);
+                }
+                
                 if (r->corr_tag) {
                     int ex;
                     char *val0 = correct_bc(r0->wl, val, &ex);
@@ -593,10 +626,28 @@ static void *run_it(void *_p)
         r1 = bseq_subset_seq(b, args.r1->r->rd, args.r1->r->st, args.r1->r->ed);
         q1 = bseq_subset_qual(b, args.r1->r->rd, args.r1->r->st, args.r1->r->ed);
 
+        // 统计 reads 的 Q30
+        if (q1) {
+            int l;
+            for (l = 0; q1[l]; l++) {
+                args.bases_reads++;
+                if (q1[l]-33 >= 30) args.q30_bases_reads++;
+            }
+        }
+
         if (r1 == NULL) error("Empty read one.");
         if (args.r2) {
             r2 = bseq_subset_seq(b, args.r2->r->rd, args.r2->r->st, args.r2->r->ed);
             q2 = bseq_subset_qual(b, args.r2->r->rd, args.r2->r->st, args.r2->r->ed);
+            
+            // 统计 read2 的 Q30
+            if (q2) {
+                int l;
+                for (l = 0; q2[l]; l++) {
+                    args.bases_reads++;
+                    if (q2[l]-33 >= 30) args.q30_bases_reads++;
+                }
+            }
         }
         
         // update reads
