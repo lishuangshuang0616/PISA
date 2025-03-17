@@ -43,6 +43,13 @@ static struct args {
     uint64_t barcode_exactly_matched;
     uint64_t filtered_by_barcode;
     uint64_t filtered_by_lowqual;
+
+    uint64_t q30_bases_cell_barcode;
+    uint64_t q30_bases_umi;      // 添加 UMI 的 Q30 统计
+    uint64_t q30_bases_reads;
+    uint64_t bases_cell_barcode;
+    uint64_t bases_umi;          // 添加 UMI 的总碱基统计
+    uint64_t bases_reads;
 } args = {
     .r1_fname    = NULL,
     .r2_fname    = NULL,
@@ -72,6 +79,12 @@ static struct args {
     .barcode_exactly_matched = 0,
     .filtered_by_barcode = 0,
     .filtered_by_lowqual = 0,
+    .q30_bases_cell_barcode = 0,
+    .q30_bases_umi = 0,         // 初始化 UMI Q30 统计
+    .q30_bases_reads = 0,
+    .bases_cell_barcode = 0,
+    .bases_umi = 0,             // 初始化 UMI 总碱基统计
+    .bases_reads = 0,
 };
 
 struct bc_reg0 {
@@ -83,6 +96,7 @@ struct bc_reg0 {
 
 struct bc_reg {
     int n;
+    int capacity;  // 添加容量字段，用于优化内存分配
     char *raw_tag;
     char *corr_tag;
     struct bc_reg0 *r;
@@ -258,7 +272,7 @@ int parse_region(const char *_s, struct bc_reg *r)
     free(s0);
     return 0;
 }
-// return 0 on add new bcs, return 1 on merged
+// 修改 merge_bcs 函数，使用倍增策略优化内存分配
 int merge_bcs(struct bc_reg *bcs, int n0)
 {
     if (n0 == 0) return 0;
@@ -267,7 +281,12 @@ int merge_bcs(struct bc_reg *bcs, int n0)
     for (i = 0; i < n0; ++i) {
         struct bc_reg *b = &bcs[i];       
         if (strcmp(b->raw_tag, b0->raw_tag) == 0) {
-            b->r = realloc(b->r, (b->n+1)*sizeof(struct bc_reg0));
+            // 检查容量，如果需要则扩展
+            if (b->n >= b->capacity) {
+                b->capacity = b->capacity ? b->capacity * 2 : 4;  // 倍增策略
+                b->r = realloc(b->r, b->capacity * sizeof(struct bc_reg0));
+            }
+            
             b->r[b->n].rd = b0->r[0].rd;
             b->r[b->n].st = b0->r[0].st;
             b->r[b->n].ed = b0->r[0].ed;
@@ -282,7 +301,44 @@ int merge_bcs(struct bc_reg *bcs, int n0)
     }
     return 0;
 }
+
+// 添加一个新函数用于合并R1/R2区域
+int merge_read_regions(struct bc_reg *r, const char *ru)
+{
+    if (r == NULL) {
+        return 0;
+    }
+    
+    // 为新区域分配内存
+    if (r->n >= r->capacity) {
+        r->capacity = r->capacity ? r->capacity * 2 : 4;  // 倍增策略
+        r->r = realloc(r->r, r->capacity * sizeof(struct bc_reg0));
+    }
+    
+    // 创建临时结构来解析区域
+    struct bc_reg temp;
+    memset(&temp, 0, sizeof(temp));
+    temp.n = 1;
+    temp.r = malloc(sizeof(struct bc_reg0));
+    memset(temp.r, 0, sizeof(struct bc_reg0));
+    
+    if (parse_region(ru, &temp)) {
+        free(temp.r);
+        return 1;
+    }
+    
+    // 复制解析结果
+    r->r[r->n].rd = temp.r[0].rd;
+    r->r[r->n].st = temp.r[0].st;
+    r->r[r->n].ed = temp.r[0].ed;
+    r->r[r->n].wl = temp.r[0].wl;
+    r->n++;
+    
+    free(temp.r);
+    return 0;
+}
 // CB,R1:1-10,whitelist.txt,CB,1;R1,R1:11-60;R2,R2
+// 修改parse_rules函数支持多个R1/R2区域
 void parse_rules(const char *rule)
 {
     kstring_t str = {0,0,0};
@@ -291,7 +347,7 @@ void parse_rules(const char *rule)
     int n;
     int *s = ksplit(&str, ';', &n);
 
-    int alloc = n -1;
+    int alloc = n;  // 增加分配空间，避免潜在的内存不足
     if (alloc == 0)  error("Unrecognised rule format.");
 
     args.bcs = malloc(sizeof(struct bc_reg)*alloc);
@@ -305,27 +361,42 @@ void parse_rules(const char *rule)
         if (ru[0] == 'R' && ru[1] == '1') {
             if(ru[2] != ',') error("Unrecognised rule format.");
             ru = ru + 3;
-            args.r1 = malloc(sizeof(struct bc_reg));
-            memset(args.r1, 0, sizeof(struct bc_reg));
-            args.r1->n = 1;
-            args.r1->r = malloc(sizeof(struct bc_reg0));
-            memset(args.r1->r, 0, sizeof(struct bc_reg0));
-            if (parse_region(ru, args.r1)) error("Unrecognised rule format.");
+            
+            // 初始化R1结构（如果尚未初始化）
+            if (args.r1 == NULL) {
+                args.r1 = malloc(sizeof(struct bc_reg));
+                memset(args.r1, 0, sizeof(struct bc_reg));
+                args.r1->capacity = 4;  // 初始容量
+                args.r1->r = malloc(args.r1->capacity * sizeof(struct bc_reg0));
+            }
+            
+            if (merge_read_regions(args.r1, ru)) {
+                error("Unrecognised rule format for R1.");
+            }
+            
         } else if (ru[0] == 'R' && ru[1] == '2') {
             if(ru[2] != ',') error("Unrecognised rule format.");
             ru = ru + 3;
-            args.r2 = malloc(sizeof(struct bc_reg));
-            memset(args.r2, 0, sizeof(struct bc_reg));
-            args.r2->n = 1;
-            args.r2->r = malloc(sizeof(struct bc_reg0));
-            memset(args.r2->r, 0, sizeof(struct bc_reg0));
-            if (parse_region(ru, args.r2)) error("Unrecognised rule format.");
+            
+            // 初始化R2结构（如果尚未初始化）
+            if (args.r2 == NULL) {
+                args.r2 = malloc(sizeof(struct bc_reg));
+                memset(args.r2, 0, sizeof(struct bc_reg));
+                args.r2->capacity = 4;  // 初始容量
+                args.r2->r = malloc(args.r2->capacity * sizeof(struct bc_reg0));
+            }
+            
+            if (merge_read_regions(args.r2, ru)) {
+                error("Unrecognised rule format for R2.");
+            }
+            
         } else {
             if (ru[2] != ',') error("Unrecognised rule format.");
             struct bc_reg *r = &args.bcs[n0];
             memset(r, 0, sizeof(struct bc_reg));
             r->n = 1;
-            r->r = malloc(sizeof(struct bc_reg0));
+            r->capacity = 4;  // 初始容量
+            r->r = malloc(r->capacity * sizeof(struct bc_reg0));
             memset(r->r, 0, sizeof(struct bc_reg0));
             kstring_t temp = {0,0,0};
             kputs(ru, &temp);
@@ -345,7 +416,7 @@ void parse_rules(const char *rule)
 
             free(temp.s);
             free(s0);
-            if (merge_bcs(args.bcs, n0)==0) n0++; // n0 is real number of tags
+            if (merge_bcs(args.bcs, n0)==0) n0++; // n0 是实际标签数量
         }
     }
 
@@ -353,6 +424,7 @@ void parse_rules(const char *rule)
     free(s);
     free(str.s);
 }
+
 static int parse_args(int argc, char **argv)
 {
     if ( argc == 1 ) return 1;
@@ -531,8 +603,10 @@ static int write_report()
     fprintf(args.fp_report, "Fragments pass QC,%"PRIu64"\n", args.reads_pass_qc);
     fprintf(args.fp_report, "Fragments with Exactly Matched Barcodes,%"PRIu64"\n", args.barcode_exactly_matched);
     fprintf(args.fp_report, "Fragments with Failed Barcodes,%"PRIu64"\n", args.filtered_by_barcode);
-    // fprintf(args.fp_report, "Fragments Filtered on Low Quality,%"PRIu64"\n", args.filtered_by_lowqual);
-    // fprintf(args.fp_report, "Q30 bases in Reads,%.1f%%\n", (float)args.q30_bases_reads/(args.bases_reads+1)*100);
+    fprintf(args.fp_report, "Fragments Filtered on Low Quality,%"PRIu64"\n", args.filtered_by_lowqual);
+    fprintf(args.fp_report, "Q30 bases in Cell Barcodes,%.2f%%\n", (float)args.q30_bases_cell_barcode/(args.bases_cell_barcode+1)*100);
+    fprintf(args.fp_report, "Q30 bases in UMI,%.2f%%\n", (float)args.q30_bases_umi/(args.bases_umi+1)*100);
+    fprintf(args.fp_report, "Q30 bases in Reads,%.2f%%\n", (float)args.q30_bases_reads/(args.bases_reads+1)*100);
     
     if (args.fp_report != stderr) fclose(args.fp_report);
     return 0;
@@ -557,6 +631,24 @@ static void *run_it(void *_p)
             for (k = 0; k < r->n; ++k) {
                 struct bc_reg0 *r0 = &r->r[k];
                 char *val = bseq_subset_seq(b, r0->rd, r0->st, r0->ed);
+                char *qual = bseq_subset_qual(b, r0->rd, r0->st, r0->ed);
+                
+                // 统计 cell barcode 或 UMI 的 Q30
+                if (qual) {
+                    int l;
+                    for (l = 0; qual[l]; l++) {
+                        // 根据 raw_tag 判断是 cell barcode 还是 UMI
+                        if (strcmp(r->raw_tag, "UR") == 0) {
+                            args.bases_umi++;
+                            if (qual[l]-33 >= 30) args.q30_bases_umi++;
+                        } else {
+                            args.bases_cell_barcode++;
+                            if (qual[l]-33 >= 30) args.q30_bases_cell_barcode++;
+                        }
+                    }
+                    free(qual);
+                }
+                
                 if (r->corr_tag) {
                     int ex;
                     char *val0 = correct_bc(r0->wl, val, &ex);
@@ -580,7 +672,6 @@ static void *run_it(void *_p)
             char *name1 = fname_update_tag(b->n0.s, r->raw_tag, str.s);
             if (corr.l) {
                 char *tmp = name1;
-                //debug_print("%s", tmp);
                 name1 = fname_update_tag(tmp,r->corr_tag, corr.s);
                 free(tmp);
             }
@@ -593,38 +684,90 @@ static void *run_it(void *_p)
             if (corr.m) free(corr.s);
         }
 
-        char *r1 = NULL;
-        char *q1 = NULL;
-        char *r2 = NULL;
-        char *q2 = NULL;
-        r1 = bseq_subset_seq(b, args.r1->r->rd, args.r1->r->st, args.r1->r->ed);
-        q1 = bseq_subset_qual(b, args.r1->r->rd, args.r1->r->st, args.r1->r->ed);
-
-        if (r1 == NULL) error("Empty read one.");
-        if (args.r2) {
-            r2 = bseq_subset_seq(b, args.r2->r->rd, args.r2->r->st, args.r2->r->ed);
-            q2 = bseq_subset_qual(b, args.r2->r->rd, args.r2->r->st, args.r2->r->ed);
+        // 处理R1和R2的多个区域
+        kstring_t r1_seq = {0,0,0};
+        kstring_t r1_qual = {0,0,0};
+        
+        // 处理R1的所有区域
+        if (args.r1) {
+            int k;
+            for (k = 0; k < args.r1->n; k++) {
+                char *seq = bseq_subset_seq(b, args.r1->r[k].rd, args.r1->r[k].st, args.r1->r[k].ed);
+                char *qual = bseq_subset_qual(b, args.r1->r[k].rd, args.r1->r[k].st, args.r1->r[k].ed);
+                
+                if (seq) {
+                    kputs(seq, &r1_seq);
+                    free(seq);
+                }
+                
+                if (qual) {
+                    kputs(qual, &r1_qual);
+                    // 统计R1的Q30
+                    int l;
+                    for (l = 0; qual[l]; l++) {
+                        args.bases_reads++;
+                        if (qual[l]-33 >= 30) args.q30_bases_reads++;
+                    }
+                    free(qual);
+                }
+            }
+        } else {
+            error("R1 region not defined.");
         }
         
-        // update reads
+        // 处理R2（如果存在）
+        kstring_t r2_seq = {0,0,0};
+        kstring_t r2_qual = {0,0,0};
+        
+        if (args.r2) {
+            int k;
+            for (k = 0; k < args.r2->n; k++) {
+                char *seq = bseq_subset_seq(b, args.r2->r[k].rd, args.r2->r[k].st, args.r2->r[k].ed);
+                char *qual = bseq_subset_qual(b, args.r2->r[k].rd, args.r2->r[k].st, args.r2->r[k].ed);
+                
+                if (seq) {
+                    kputs(seq, &r2_seq);
+                    free(seq);
+                }
+                
+                if (qual) {
+                    kputs(qual, &r2_qual);
+                    // 统计R2的Q30
+                    int l;
+                    for (l = 0; qual[l]; l++) {
+                        args.bases_reads++;
+                        if (qual[l]-33 >= 30) args.q30_bases_reads++;
+                    }
+                    free(qual);
+                }
+            }
+        }
+        
+        // 更新reads
         b->s0.l = 0;
         b->q0.l = 0;
-        kputs(r1, &b->s0);
-        if (q1) kputs(q1, &b->q0);
+        if (r1_seq.s) {
+            kputs(r1_seq.s, &b->s0);
+            free(r1_seq.s);
+        }
+        if (r1_qual.s) {
+            kputs(r1_qual.s, &b->q0);
+            free(r1_qual.s);
+        }
 
         b->s1.l = 0;
         b->q1.l = 0;
-        if (r2) kputs(r2, &b->s1);
-        if (q2) kputs(q2, &b->q1);
-
-        if (r1) free(r1);
-        if (q1) free(q1);
-        if (r2) free(r2);
-        if (q2) free(q2);
+        if (r2_seq.s) {
+            kputs(r2_seq.s, &b->s1);
+            free(r2_seq.s);
+        }
+        if (r2_qual.s) {
+            kputs(r2_qual.s, &b->q1);
+            free(r2_qual.s);
+        }
     }
     return p;
 }
-
 static void write_out(void *_p)
 {
     struct bseq_pool *p = (struct bseq_pool*)_p;
