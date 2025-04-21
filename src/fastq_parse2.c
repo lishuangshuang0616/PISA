@@ -614,6 +614,12 @@ static int write_report()
 static void *run_it(void *_p)
 {
     struct bseq_pool *p = (struct bseq_pool*)_p;
+    uint64_t local_bases_reads = 0;
+    uint64_t local_q30_bases_reads = 0;
+    uint64_t local_bases_cell_barcode = 0;
+    uint64_t local_q30_bases_cell_barcode = 0;
+    uint64_t local_bases_umi = 0;
+    uint64_t local_q30_bases_umi = 0;
     
     int i;
     for (i = 0; i < p->n; ++i) {
@@ -637,13 +643,12 @@ static void *run_it(void *_p)
                 if (qual) {
                     int l;
                     for (l = 0; qual[l]; l++) {
-                        // 根据 raw_tag 判断是 cell barcode 还是 UMI
                         if (strcmp(r->raw_tag, "UR") == 0) {
-                            args.bases_umi++;
-                            if (qual[l]-33 >= 30) args.q30_bases_umi++;
+                            local_bases_umi++;
+                            if (qual[l]-33 >= 30) local_q30_bases_umi++;
                         } else {
-                            args.bases_cell_barcode++;
-                            if (qual[l]-33 >= 30) args.q30_bases_cell_barcode++;
+                            local_bases_cell_barcode++;
+                            if (qual[l]-33 >= 30) local_q30_bases_cell_barcode++;
                         }
                     }
                     free(qual);
@@ -705,8 +710,8 @@ static void *run_it(void *_p)
                     // 统计R1的Q30
                     int l;
                     for (l = 0; qual[l]; l++) {
-                        args.bases_reads++;
-                        if (qual[l]-33 >= 30) args.q30_bases_reads++;
+                        local_bases_reads++;
+                        if (qual[l]-33 >= 30) local_q30_bases_reads++;
                     }
                     free(qual);
                 }
@@ -735,8 +740,8 @@ static void *run_it(void *_p)
                     // 统计R2的Q30
                     int l;
                     for (l = 0; qual[l]; l++) {
-                        args.bases_reads++;
-                        if (qual[l]-33 >= 30) args.q30_bases_reads++;
+                        local_bases_reads++;
+                        if (qual[l]-33 >= 30) local_q30_bases_reads++;
                     }
                     free(qual);
                 }
@@ -766,6 +771,19 @@ static void *run_it(void *_p)
             free(r2_qual.s);
         }
     }
+    #pragma omp atomic
+    args.bases_reads += local_bases_reads;
+    #pragma omp atomic
+    args.q30_bases_reads += local_q30_bases_reads;
+    #pragma omp atomic
+    args.bases_cell_barcode += local_bases_cell_barcode;
+    #pragma omp atomic
+    args.q30_bases_cell_barcode += local_q30_bases_cell_barcode;
+    #pragma omp atomic
+    args.bases_umi += local_bases_umi;
+    #pragma omp atomic
+    args.q30_bases_umi += local_q30_bases_umi;
+    
     return p;
 }
 static void write_out(void *_p)
