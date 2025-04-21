@@ -7,6 +7,7 @@ int usage()
     fprintf(stderr, "\n\x1b[1mPISA\x1b[0m - a collection of tools for single cell data pre-processing and interpretation.\n");
     fprintf(stderr, "Version: %s + htslib: %s\n", PISA_VERSION, HTS_VERSION_TEXT);
     fprintf(stderr, "Homepage: https://github.com/shiquan/PISA\n");
+    fprintf(stderr, "DNBelab C Series version\n");
     fprintf(stderr, "\nCommands:\n");
     fprintf(stderr, "\n--- Processing FASTQ/FASTQ+\n");
     fprintf(stderr, "    parse      Parse barcodes from FASTQ reads to FASTQ+.\n");
