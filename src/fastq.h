@@ -35,6 +35,7 @@ struct bseq {
     // read 4
     kstring_t s3, q3;
     void *data; // extend data, should be freed manually
+    char *cb_seq;  // 添加字段保存矫正后的 CB 序列
 };
 
 struct bseq_pool {

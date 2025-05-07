@@ -50,6 +50,8 @@ static struct args {
     uint64_t bases_cell_barcode;
     uint64_t bases_umi;          // 添加 UMI 的总碱基统计
     uint64_t bases_reads;
+    const char *cb_out_fname;  // 新增 CB 输出文件名
+    FILE *fp_cb_out;          // 新增 CB 输出文件指针
 } args = {
     .r1_fname    = NULL,
     .r2_fname    = NULL,
@@ -85,6 +87,8 @@ static struct args {
     .bases_cell_barcode = 0,
     .bases_umi = 0,             // 初始化 UMI 总碱基统计
     .bases_reads = 0,
+    .cb_out_fname = NULL,
+    .fp_cb_out = NULL,
 };
 
 struct bc_reg0 {
@@ -460,6 +464,7 @@ static int parse_args(int argc, char **argv)
             args.no_warnings = 1;
             continue;
         }
+        else if (strcmp(a, "-cb") == 0) var = &args.cb_out_fname;
         if (var != 0) {
             if (i == argc) error("Miss an argument after %s.", a);
             *var = argv[i++];
@@ -566,6 +571,11 @@ static int parse_args(int argc, char **argv)
     args.fastq = fastq_handler_init(args.r1_fname, args.r2_fname, args.r3_fname, args.r4_fname, args.smart_pair, args.chunk_size);
     if (args.fastq == NULL) error("Failed to init input fastq.");
     
+    if (args.cb_out_fname) {
+        args.fp_cb_out = fopen(args.cb_out_fname, "w");
+        if (args.fp_cb_out == NULL) error("%s: %s.", args.cb_out_fname, strerror(errno));
+    }
+    
     return 0;
 }
 
@@ -573,6 +583,7 @@ static void memory_release()
 {
     if (args.fp_out1 != stdout) fclose(args.fp_out1);
     if (args.fp_out2) fclose(args.fp_out2);
+    if (args.fp_cb_out) fclose(args.fp_cb_out);
 
     int i;
     for (i = 0; i < args.n_bc; ++i) {
@@ -624,6 +635,7 @@ static void *run_it(void *_p)
     int i;
     for (i = 0; i < p->n; ++i) {
         struct bseq *b = &p->s[i];
+        b->cb_seq = NULL;  // 初始化为 NULL
         int j;
         b->flag = FQ_FLAG_PASS;
         for (j = 0; j < args.n_bc; ++j) {
@@ -687,6 +699,11 @@ static void *run_it(void *_p)
             free(name1);
             free(str.s);
             if (corr.m) free(corr.s);
+
+            // 如果是 CB 标签，保存矫正后的序列
+            if (r->corr_tag && strcmp(r->corr_tag, "CB") == 0 && corr.l > 0) {
+                b->cb_seq = strdup(corr.s);  // 保存矫正后的序列
+            }
         }
 
         // 处理R1和R2的多个区域
@@ -806,11 +823,22 @@ static void write_out(void *_p)
 
         if (b->flag == FQ_FLAG_READ_QUAL) {
             args.filtered_by_lowqual++;
-            continue; // just skip ALL low quality reads
+            continue;
         }
 
         if (b->flag == FQ_FLAG_BC_EXACTMATCH) {
             args.barcode_exactly_matched++;
+        }
+
+        // 输出矫正后的 CB 序列为 fastq 格式
+        if (args.fp_cb_out && b->cb_seq) {
+            fprintf(args.fp_cb_out, "@%s\n%s\n+\n", b->n0.s, b->cb_seq);
+            // 输出与序列等长的F作为质量值
+            int len = strlen(b->cb_seq);
+            for (int j = 0; j < len; j++) {
+                fputc('F', args.fp_cb_out);
+            }
+            fputc('\n', args.fp_cb_out);
         }
 
         args.reads_pass_qc++;
@@ -821,9 +849,19 @@ static void write_out(void *_p)
             if (b->q1.l) fprintf(fp2, "+\n%s\n", b->q1.s);
         }
     }
+    
+    // 清理内存
+    for (i = 0; i < p->n; ++i) {
+        if (p->s[i].cb_seq) {
+            free(p->s[i].cb_seq);
+            p->s[i].cb_seq = NULL;
+        }
+    }
+    
     bseq_pool_destroy(p);
     fflush(fp1);
     if (fp2 != fp1) fflush(fp2);
+    if (args.fp_cb_out) fflush(args.fp_cb_out);
 }
 
 void fastq_parse_order()
