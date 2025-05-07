@@ -701,8 +701,19 @@ static void *run_it(void *_p)
             if (corr.m) free(corr.s);
 
             // 如果是 CB 标签，保存矫正后的序列
-            if (r->corr_tag && strcmp(r->corr_tag, "CB") == 0 && corr.l > 0) {
-                b->cb_seq = strdup(corr.s);  // 保存矫正后的序列
+            if (r->corr_tag && strcmp(r->corr_tag, "CB") == 0) {
+                kstring_t seq = {0,0,0};
+                for (k = 0; k < r->n; ++k) {
+                    struct bc_reg0 *r0 = &r->r[k];
+                    char *val = bseq_subset_seq(b, r0->rd, r0->st, r0->ed);
+                    if (val) {
+                        kputs(val, &seq);
+                        free(val);
+                    }
+                }
+                if (seq.l > 0) {
+                    b->cb_seq = seq.s;
+                }
             }
         }
 
@@ -835,7 +846,9 @@ static void write_out(void *_p)
             fprintf(args.fp_cb_out, "@%s\n%s\n+\n", b->n0.s, b->cb_seq);
             // 输出与序列等长的F作为质量值
             int len = strlen(b->cb_seq);
-            for (int j = 0; j < len; j++) {
+            
+            int j;
+            for (j = 0; j < len; j++) {
                 fputc('F', args.fp_cb_out);
             }
             fputc('\n', args.fp_cb_out);
