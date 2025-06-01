@@ -77,6 +77,7 @@ int fastq_parse2_usage()
     fprintf(stderr, "\nOptions :\n");
     fprintf(stderr, " -1       [fastq]   Read 1 output.\n");
     fprintf(stderr, " -2       [fastq]   Read 2 output.\n");
+    fprintf(stderr, " -cb      [fastq]   Output corrected cell barcodes in FASTQ format.\n");
     fprintf(stderr, " -rule    [STRING]  Read structure in line. See \x1b[31m\x1b[1mNotice\x1b[0m.\n");
     fprintf(stderr, " -p                 Read 1 and read 2 interleaved in the input file.\n");
     fprintf(stderr, " -q       [INT]     Drop reads if average sequencing quality below this value.\n");

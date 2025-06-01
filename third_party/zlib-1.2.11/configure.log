@@ -1,73 +1,73 @@
 --------------------
 ./configure
-2025年 06月 01日 星期日 10:40:09 PDT
+Wed May  7 11:25:51 CST 2025
 Checking for gcc...
-=== ztest8733.c ===
+=== ztest16689.c ===
 extern int getchar();
 int hello() {return getchar();}
 ===
-gcc -c ztest8733.c
+gcc -c ztest16689.c
 ... using gcc
 
 Checking for obsessive-compulsive compiler options...
-=== ztest8733.c ===
+=== ztest16689.c ===
 int foo() { return 0; }
 ===
-gcc -c -O3 ztest8733.c
+gcc -c -O3 ztest16689.c
 
 Checking for shared library support...
-=== ztest8733.c ===
+=== ztest16689.c ===
 extern int getchar();
 int hello() {return getchar();}
 ===
-gcc -w -c -O3 -fPIC ztest8733.c
-gcc -shared -Wl,-soname,libz.so.1,--version-script,zlib.map -O3 -fPIC -o ztest8733.so ztest8733.o
+gcc -w -c -O3 -fPIC ztest16689.c
+gcc -shared -Wl,-soname,libz.so.1,--version-script,zlib.map -O3 -fPIC -o ztest16689.so ztest16689.o
 /usr/bin/ld: cannot open linker script file zlib.map: No such file or directory
 collect2: error: ld returned 1 exit status
 (exit code 1)
 No shared library support.
 Building static library libz.a version 1.2.11 with gcc.
 
-=== ztest8733.c ===
+=== ztest16689.c ===
 #include <stdio.h>
 #include <stdlib.h>
 size_t dummy = 0;
 ===
-gcc -c -O3 ztest8733.c
+gcc -c -O3 ztest16689.c
 Checking for size_t... Yes.
 
 
-=== ztest8733.c ===
+=== ztest16689.c ===
 #include <sys/types.h>
 off64_t dummy = 0;
 ===
-gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest8733.c
+gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest16689.c
 Checking for off64_t... Yes.
 Checking for fseeko... Yes.
 
-=== ztest8733.c ===
+=== ztest16689.c ===
 #include <string.h>
 #include <errno.h>
 int main() { return strlen(strerror(errno)); }
 ===
-gcc -O3 -D_LARGEFILE64_SOURCE=1 -o ztest8733 ztest8733.c
+gcc -O3 -D_LARGEFILE64_SOURCE=1 -o ztest16689 ztest16689.c
 Checking for strerror... Yes.
 
-=== ztest8733.c ===
+=== ztest16689.c ===
 #include <unistd.h>
 int main() { return 0; }
 ===
-gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest8733.c
+gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest16689.c
 Checking for unistd.h... Yes.
 
-=== ztest8733.c ===
+=== ztest16689.c ===
 #include <stdarg.h>
 int main() { return 0; }
 ===
-gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest8733.c
+gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest16689.c
 Checking for stdarg.h... Yes.
 
-=== ztest8733.c ===
+=== ztest16689.c ===
 #include <stdio.h>
 #include <stdarg.h>
 #include "zconf.h"
@@ -79,10 +79,10 @@ int main()
   return 0;
 }
 ===
-gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest8733.c
+gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest16689.c
 Checking whether to use vs[n]printf() or s[n]printf()... using vs[n]printf().
 
-=== ztest8733.c ===
+=== ztest16689.c ===
 #include <stdio.h>
 #include <stdarg.h>
 int mytest(const char *fmt, ...)
@@ -99,10 +99,10 @@ int main()
   return (mytest("Hello%d\n", 1));
 }
 ===
-gcc -O3 -D_LARGEFILE64_SOURCE=1 -o ztest8733 ztest8733.c
+gcc -O3 -D_LARGEFILE64_SOURCE=1 -o ztest16689 ztest16689.c
 Checking for vsnprintf() in stdio.h... Yes.
 
-=== ztest8733.c ===
+=== ztest16689.c ===
 #include <stdio.h>
 #include <stdarg.h>
 int mytest(const char *fmt, ...)
@@ -120,10 +120,10 @@ int main()
   return (mytest("Hello%d\n", 1));
 }
 ===
-gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest8733.c
+gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest16689.c
 Checking for return value of vsnprintf()... Yes.
 
-=== ztest8733.c ===
+=== ztest16689.c ===
 #define ZLIB_INTERNAL __attribute__((visibility ("hidden")))
 int ZLIB_INTERNAL foo;
 int main()
@@ -131,7 +131,7 @@ int main()
   return 0;
 }
 ===
-gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest8733.c
+gcc -c -O3 -D_LARGEFILE64_SOURCE=1 ztest16689.c
 Checking for attribute(visibility) support... Yes.
 
 ALL = static all64
