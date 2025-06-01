@@ -702,17 +702,23 @@ static void *run_it(void *_p)
 
             // 如果是 CB 标签，保存矫正后的序列
             if (r->corr_tag && strcmp(r->corr_tag, "CB") == 0) {
-                kstring_t seq = {0,0,0};
-                for (k = 0; k < r->n; ++k) {
-                    struct bc_reg0 *r0 = &r->r[k];
-                    char *val = bseq_subset_seq(b, r0->rd, r0->st, r0->ed);
-                    if (val) {
-                        kputs(val, &seq);
-                        free(val);
+                if (corr.l > 0) {
+                    // 使用矫正后的序列
+                    b->cb_seq = strdup(corr.s);
+                } else {
+                    // 如果没有矫正序列，使用原始序列作为备选
+                    kstring_t seq = {0,0,0};
+                    for (k = 0; k < r->n; ++k) {
+                        struct bc_reg0 *r0 = &r->r[k];
+                        char *val = bseq_subset_seq(b, r0->rd, r0->st, r0->ed);
+                        if (val) {
+                            kputs(val, &seq);
+                            free(val);
+                        }
                     }
-                }
-                if (seq.l > 0) {
-                    b->cb_seq = seq.s;
+                    if (seq.l > 0) {
+                        b->cb_seq = seq.s;
+                    }
                 }
             }
         }
