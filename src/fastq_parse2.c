@@ -646,6 +646,8 @@ static void *run_it(void *_p)
             int any_failure = 0; 
             
             int k;
+            kstring_t cb_seq = {0,0,0}; // 用于拼接所有CB段
+            int cb_has_correction = 0;
             for (k = 0; k < r->n; ++k) {
                 struct bc_reg0 *r0 = &r->r[k];
                 char *val = bseq_subset_seq(b, r0->rd, r0->st, r0->ed);
@@ -677,6 +679,11 @@ static void *run_it(void *_p)
                         b->flag = FQ_FLAG_BC_FAILURE;
                     } else {
                         kputs(val0, &corr);
+                        // 拼接所有CB段的矫正barcode
+                        if (strcmp(r->corr_tag, "CB") == 0) {
+                            kputs(val0, &cb_seq);
+                            cb_has_correction = 1;
+                        }
                     }
                 }
                 kputs(val, &str);
@@ -700,13 +707,12 @@ static void *run_it(void *_p)
             free(str.s);
             if (corr.m) free(corr.s);
 
-            // 如果是 CB 标签，保存矫正后的序列
+            // 如果是 CB 标签，保存所有矫正后的序列拼接
             if (r->corr_tag && strcmp(r->corr_tag, "CB") == 0) {
-                if (corr.l > 0) {
-                    // 使用矫正后的序列
-                    b->cb_seq = strdup(corr.s);
+                if (cb_has_correction && cb_seq.l > 0) {
+                    b->cb_seq = strdup(cb_seq.s);
                 } else {
-                    // 如果没有矫正序列，使用原始序列作为备选
+                    // 没有矫正，用原始
                     kstring_t seq = {0,0,0};
                     for (k = 0; k < r->n; ++k) {
                         struct bc_reg0 *r0 = &r->r[k];
@@ -720,6 +726,7 @@ static void *run_it(void *_p)
                         b->cb_seq = seq.s;
                     }
                 }
+                if (cb_seq.m) free(cb_seq.s);
             }
         }
 
