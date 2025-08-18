@@ -851,7 +851,7 @@ static void write_out(void *_p)
         args.raw_reads++;
         
         // Check if max_reads limit is reached
-        if (args.max_reads > 0 && args.reads_pass_qc >= args.max_reads) {
+        if (args.max_reads > 0 && args.raw_reads > args.max_reads) {
             // Skip processing remaining reads in this batch
             break;
         }
@@ -914,7 +914,7 @@ void fastq_parse_order()
     
     for (;;) {
         // Check if max_reads limit is reached
-        if (args.max_reads > 0 && args.reads_pass_qc >= args.max_reads) {
+        if (args.max_reads > 0 && args.raw_reads >= args.max_reads) {
             break;
         }
         
@@ -955,7 +955,7 @@ void fastq_parse_unorder()
 #pragma omp critical (read)
         {
             // Check if max_reads limit is reached
-            if (args.max_reads > 0 && args.reads_pass_qc >= args.max_reads) {
+            if (args.max_reads > 0 && args.raw_reads >= args.max_reads) {
                 b = NULL;
             } else {
                 b = fastq_read(args.fastq, NULL);
