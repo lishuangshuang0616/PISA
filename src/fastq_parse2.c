@@ -641,13 +641,11 @@ static void *run_it(void *_p)
     uint64_t local_q30_bases_cell_barcode = 0;
     uint64_t local_bases_umi = 0;
     uint64_t local_q30_bases_umi = 0;
-    uint64_t local_raw_reads = 0;  // Add local counter for raw reads
     
     int i;
     for (i = 0; i < p->n; ++i) {
         struct bseq *b = &p->s[i];
         b->cb_seq = NULL;  // 初始化为 NULL
-        local_raw_reads++;  // Increment raw reads counter for each read processed
         
         int j;
         b->flag = FQ_FLAG_PASS;
@@ -825,6 +823,9 @@ static void *run_it(void *_p)
             free(r2_qual.s);
         }
     }
+    // Batch update all counters at once to reduce atomic operation overhead
+    #pragma omp atomic
+    args.raw_reads += p->n;  // Add batch count of processed reads
     #pragma omp atomic
     args.bases_reads += local_bases_reads;
     #pragma omp atomic
@@ -837,8 +838,6 @@ static void *run_it(void *_p)
     args.bases_umi += local_bases_umi;
     #pragma omp atomic
     args.q30_bases_umi += local_q30_bases_umi;
-    #pragma omp atomic
-    args.raw_reads += local_raw_reads;  // Add atomic increment of raw reads
     
     return p;
 }
