@@ -641,11 +641,14 @@ static void *run_it(void *_p)
     uint64_t local_q30_bases_cell_barcode = 0;
     uint64_t local_bases_umi = 0;
     uint64_t local_q30_bases_umi = 0;
+    uint64_t local_raw_reads = 0;  // Add local counter for raw reads
     
     int i;
     for (i = 0; i < p->n; ++i) {
         struct bseq *b = &p->s[i];
         b->cb_seq = NULL;  // 初始化为 NULL
+        local_raw_reads++;  // Increment raw reads counter for each read processed
+        
         int j;
         b->flag = FQ_FLAG_PASS;
         for (j = 0; j < args.n_bc; ++j) {
@@ -834,6 +837,8 @@ static void *run_it(void *_p)
     args.bases_umi += local_bases_umi;
     #pragma omp atomic
     args.q30_bases_umi += local_q30_bases_umi;
+    #pragma omp atomic
+    args.raw_reads += local_raw_reads;  // Add atomic increment of raw reads
     
     return p;
 }
@@ -847,14 +852,6 @@ static void write_out(void *_p)
     int i;
     for (i = 0; i < p->n; ++i) {
         struct bseq *b = &p->s[i];
-        
-        args.raw_reads++;
-        
-        // Check if max_reads limit is reached
-        if (args.max_reads > 0 && args.raw_reads > args.max_reads) {
-            // Skip processing remaining reads in this batch
-            break;
-        }
         
         if (b->flag == FQ_FLAG_BC_FAILURE) {
             args.filtered_by_barcode++;
@@ -913,11 +910,6 @@ void fastq_parse_order()
     hts_tpool_result *r;
     
     for (;;) {
-        // Check if max_reads limit is reached
-        if (args.max_reads > 0 && args.raw_reads >= args.max_reads) {
-            break;
-        }
-        
         struct bseq_pool *pool = fastq_read(args.fastq, NULL);
         
         if (pool == NULL) break;
@@ -954,12 +946,7 @@ void fastq_parse_unorder()
         
 #pragma omp critical (read)
         {
-            // Check if max_reads limit is reached
-            if (args.max_reads > 0 && args.raw_reads >= args.max_reads) {
-                b = NULL;
-            } else {
-                b = fastq_read(args.fastq, NULL);
-            }
+            b = fastq_read(args.fastq, NULL);
         }
         if (b == NULL) break;
         b = run_it(b);
