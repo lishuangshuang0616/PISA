@@ -85,6 +85,7 @@ int fastq_parse2_usage()
     fprintf(stderr, " -report  [csv]     Summary report.\n");
     fprintf(stderr, " -order             Keep input order.\n");
     fprintf(stderr, " -t       [INT]     Threads. [4]\n");
+    fprintf(stderr, " -max-reads [INT]   Maximum number of reads to process. 0 means no limit. [0]\n");
     //fprintf(stderr, " -suffix  [STRING]  Suffix string for corrected barcode.\n");
     fprintf(stderr, " -x                 Predefined code for specific library.\n");
     fprintf(stderr, "          * C4      Library structure for DNBelab C4 RNA kit v1.\n");

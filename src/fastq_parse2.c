@@ -50,6 +50,7 @@ static struct args {
     uint64_t bases_cell_barcode;
     uint64_t bases_umi;          // 添加 UMI 的总碱基统计
     uint64_t bases_reads;
+    uint64_t max_reads;        // Maximum number of reads to process, 0 means no limit
     const char *cb_out_fname;  // 新增 CB 输出文件名
     FILE *fp_cb_out;          // 新增 CB 输出文件指针
 } args = {
@@ -66,6 +67,7 @@ static struct args {
     .fp_out2     = NULL,
     
     .parse_rules = NULL,
+    .max_reads = 0,
     .n_bc        = 0,
     .bcs         = NULL,
     .r1          = NULL,
@@ -437,6 +439,7 @@ static int parse_args(int argc, char **argv)
     const char *thread = NULL;
     const char *qual_thres = NULL;
     const char *code = NULL;
+    const char *max_reads = NULL;
     for (i = 1; i < argc;) {
         const char *a = argv[i++];
         const char **var = 0;
@@ -465,6 +468,7 @@ static int parse_args(int argc, char **argv)
             continue;
         }
         else if (strcmp(a, "-cb") == 0) var = &args.cb_out_fname;
+        else if (strcmp(a, "-max-reads") == 0) var = &max_reads;
         if (var != 0) {
             if (i == argc) error("Miss an argument after %s.", a);
             *var = argv[i++];
@@ -546,6 +550,12 @@ static int parse_args(int argc, char **argv)
     if (qual_thres) {
         args.qual_thres = str2int((char*)qual_thres);
         LOG_print("Average quality below %d will be drop.", args.qual_thres);
+    }
+    if (max_reads) {
+        args.max_reads = str2int((char*)max_reads);
+        if (args.max_reads > 0) {
+            LOG_print("Maximum reads to process: %llu", args.max_reads);
+        }
     }
 
     if (args.r1_fname == NULL && (!isatty(fileno(stdin)))) args.r1_fname = "-";
@@ -840,6 +850,12 @@ static void write_out(void *_p)
         
         args.raw_reads++;
         
+        // Check if max_reads limit is reached
+        if (args.max_reads > 0 && args.reads_pass_qc >= args.max_reads) {
+            // Skip processing remaining reads in this batch
+            break;
+        }
+        
         if (b->flag == FQ_FLAG_BC_FAILURE) {
             args.filtered_by_barcode++;
             continue;
@@ -897,6 +913,11 @@ void fastq_parse_order()
     hts_tpool_result *r;
     
     for (;;) {
+        // Check if max_reads limit is reached
+        if (args.max_reads > 0 && args.reads_pass_qc >= args.max_reads) {
+            break;
+        }
+        
         struct bseq_pool *pool = fastq_read(args.fastq, NULL);
         
         if (pool == NULL) break;
@@ -932,7 +953,14 @@ void fastq_parse_unorder()
     for (;;) {
         
 #pragma omp critical (read)
-        b = fastq_read(args.fastq, NULL);
+        {
+            // Check if max_reads limit is reached
+            if (args.max_reads > 0 && args.reads_pass_qc >= args.max_reads) {
+                b = NULL;
+            } else {
+                b = fastq_read(args.fastq, NULL);
+            }
+        }
         if (b == NULL) break;
         b = run_it(b);
         
